@@ -22,7 +22,7 @@ AUPHONIC_OUT=""                                       # optional: UUID of servic
 AUPHONIC=false                      # if true Auphonic transcription is always triggered, must be configured below
 GOOGLE=false                        # if both are false and no service is called from command line, only mono mix will be created
 LANGUAGE="en-US"                    # default language
-DELETE_INPUT_FILES=false            # if true, input files will be deleted from input folder (they will be copied to the output destination, though)
+DELETE_INPUT_FILES=true             # if true, input files will be deleted from input folder (they will be copied to the output destination, though) - recommended for use with FreePBX
 DESTINATION=""                      # leave empty (or set to "dir") to use directory of output file
                                     #    or e.g. DESTINATION=/path/to/folder to use a writable folder on local system
                                     #    or e.g. DESTINATION=Dropbox:transcripts to use a folder on a Rclone remote called Dropbox
@@ -36,6 +36,7 @@ SOX=sox
 TIMEOUT=30
 
 # If you use nTRAC with FreePBX, the created mono-mix will additionally be copied to the INPUT directory for use by the PBX (e.g. User Control Panel).
+# Usually you would also set DELETE_INPUT_FILES=true above
 FREEPBX=true
 
 # Create a log? Where?

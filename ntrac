@@ -10,17 +10,21 @@
 # - Asterisk voicemail attachment conversion script - Jason Klein, Ward Mundy & Associates LLC, et al
 #
 # Revision history :
-# 31. Jan 2019 - v0.9 - Creation by Thomas Reintjes
+# 03. Feb 2019 - v0.9 - Creation by Thomas Reintjes
 #
 #
 ##############################################################################################################################################
 
-#### SETTINGS ####
+
+
+####################### SETTINGS #########################################################
 
 . ntrac.config
 
-#
-############ NO EDITS BELOW THIS LINE ########################################################################################################
+# don't care if strings in "case" or [[...]] are uppercase or lowercase
+# shopt -s nocasematch
+
+####################### DEBUG ############################################################
 
 if [ "$debug_mode" = true ] ; then
   set -x
@@ -29,11 +33,8 @@ if [ "$debug_mode" = true ] ; then
   exec 1>"$log_file" 2>&1
 fi
 
-# don't care if strings in "case" or [[...]] are uppercase or lowercase
-shopt -s nocasematch
-#
 ####################### FUNCTIONS ########################################################
-#
+
 # help and exit
 help_and_exit() {
   local retval=${1:-1}
@@ -82,9 +83,9 @@ if [[ "$1" == all ]] && [ "$DELETE_INPUT_FILES" = true ] && [[ "$DESTINATION" !=
   done
 fi
 }
-#
+
 ####################### VARIABLES ########################################################
-#
+
 # command line variables
 input_files=( )
 
@@ -154,9 +155,9 @@ else
   # remove trailing slash
   DESTINATION="${DESTINATION%/}"
 fi
-#
+
 ####################### SOX ##############################################################
-#
+
 # copy input files to output destination
 for inputfile in "${input_files[@]}" ; do
   output copy "$inputfile"
@@ -181,9 +182,9 @@ else
   # if not for FreePBX, mono-mix is not needed anymore
   rm "$MIX"
 fi
-#
+
 ####################### Google transcription #############################################
-#
+
 if $GOOGLE ; then
 
   TRANSCRIPT="$OUTPUT_DIR/$BASENAME-$LANGUAGE.txt"
@@ -295,9 +296,9 @@ if $GOOGLE ; then
   cleanup google
 fi
 # done Google transcription
-#
+
 ####################### Auphonic transcription ###########################################
-#
+
 if $AUPHONIC ; then
   auphonic_error_check() {
     if [[ $JSON == *"\"status_string\": \"Error\""* || $JSON == *"DOCTYPE html"* ]] ; then
