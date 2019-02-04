@@ -19,7 +19,7 @@
 
 ####################### SETTINGS #########################################################
 
-. ntrac.config
+. "$(dirname "${BASH_SOURCE[0]}")/ntrac.config"
 
 # don't care if strings in "case" or [[...]] are uppercase or lowercase
 # shopt -s nocasematch
