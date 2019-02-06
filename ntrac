@@ -256,41 +256,42 @@ if $GOOGLE ; then
     fi
   done
 
-# extract transcript from json  
-# 1. swap transcript and channelTag sections
-  SEDMAGIC="grep -E 'transcript|channelTag' <<< '$JSON' | \
- sed 'N;    
- s/\(.*transcript.*\)\n\(.*channelTag.*\)/\2\
-\1/' | \
- sed "
-  for (( i=1; i <= $TRACKS; i++ ));
-# 2. check if consecutive channelTags are equal, only keep the first one 
-  do
-  SEDMAGIC+=" -e '
-   /channelTag"'"'": "$i"/{
-   x
-    /channelTag"'"'": "$i"/!{
-    x
-    h
-    b
-    }
-   x
-   d
-   }
-   '"
-  done
-# 3. replace channelTags with names
- SEDMAGIC+=" | sed -e 's/ *"'"'"channelTag"'"'": 1,/LOCAL:\\
-/g'"
+  # extract transcript from json  
+  # 1. swap transcript and channelTag sections
+  JSON=$( echo "$JSON" | grep -E 'transcript|channelTag' )
+  # ...but only if channelTag exists in file, i.e. if it's a multitrack production
+  if [[ $JSON == *"channelTag"* ]] ; then
+    JSON=$( echo "$JSON" | sed "N    
+ s#\(.*transcript.*\)\n\(.*channelTag.*\)#\2\
+\1#" )
 
-  for (( i=2; i <= ${TRACKS}; i++ ));
-  do
-  SEDMAGIC+=" -e 's/ *"'"'"channelTag"'"'": "$i",/REMOTE "$((i - 1))":\\
-/g'"
-  done
-  SEDMAGIC+=" -e 's/ *"'"'"transcript"'"'": "'"'" *//g' -e 's/"'"'",$//g'"
+  # 2. check if consecutive channelTags are equal, only keep the first one  
+    SEDMAGIC="sed"
+    for (( i=1; i <= $TRACKS; i++ )) ; do
+    SEDMAGIC+=" -e '
+     /channelTag"'"'": "$i"/{
+     x
+      /channelTag"'"'": "$i"/!{
+      x
+      h
+      b
+      }
+     x
+     d
+     }
+     '"
+    done
+    JSON=$( echo "$JSON" | eval "$SEDMAGIC" )
   
-  eval "$SEDMAGIC" > "$TRANSCRIPT"
+    # 3. replace channelTags with names
+    for (( i=2; i <= $TRACKS; i++ )) ; do
+      JSON=$( echo "$JSON" | sed "s# *.channelTag.: $i.#REMOTE $((i - 1)):#g" )
+    done
+  fi
+  JSON=$( echo "$JSON" | sed -e 's/  *.channelTag.: 1,/LOCAL:/g' -e 's/  *.transcript.: . */\
+/g' -e 's/\",//g' )
+
+  echo "$JSON" > "$TRANSCRIPT" 
   output move "$TRANSCRIPT"
 
   cleanup google
