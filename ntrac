@@ -427,23 +427,23 @@ if $AUPHONIC ; then
    
         AUPHONIC_TRACK_ADD="           
                   {
-                  -insert_quotes-type-insert_quotes-: -insert_quotes-multitrack-insert_quotes-, -insert_quotes-id-insert_quotes-: ${track_1_parameters[4]},
-                  -insert_quotes-service-insert_quotes-: -insert_quotes-$AUPHONIC_IN-insert_quotes-,
-                  -insert_quotes-input_file-insert_quotes-: -insert_quotes-${input_filenames[0]}-insert_quotes-,
-                  -insert_quotes-algorithms-insert_quotes-: {-insert_quotes-hipfilter-insert_quotes-: ${track_1_parameters[0]}, -insert_quotes-backforeground-insert_quotes-: ${track_1_parameters[1]}, -insert_quotes-denoise-insert_quotes-: ${track_1_parameters[2]}, -insert_quotes-denoiseamount-insert_quotes-: ${track_1_parameters[3]}}
-                  },"
+                  \"type\": \"multitrack\", \"id\": ${track_1_parameters[4]},
+                  \"service\": \"$AUPHONIC_IN\",
+                  \"input_file\": \"${input_filenames[0]}\",
+                  \"algorithms\": {\"hipfilter\": ${track_1_parameters[0]}, \"backforeground\": ${track_1_parameters[1]}, \"denoise\": ${track_1_parameters[2]}, \"denoiseamount\": ${track_1_parameters[3]}}"
         for (( i=1; i < ${TRACKS}; i++ )); do
           AUPHONIC_TRACK_ADD+="           
+                  },
                   {
-                  -insert_quotes-type-insert_quotes-: -insert_quotes-multitrack-insert_quotes-, -insert_quotes-id-insert_quotes-: ${track_2_parameters[4]%\"*} $(($i+1))-insert_quotes-,
-                  -insert_quotes-service-insert_quotes-: -insert_quotes-$AUPHONIC_IN-insert_quotes-,
-                  -insert_quotes-input_file-insert_quotes-: -insert_quotes-${input_filenames[$i]}-insert_quotes-,
-                  -insert_quotes-algorithms-insert_quotes-: {-insert_quotes-hipfilter-insert_quotes-: ${track_2_parameters[0]}, -insert_quotes-backforeground-insert_quotes-: ${track_2_parameters[1]}, -insert_quotes-denoise-insert_quotes-: ${track_2_parameters[2]}, -insert_quotes-denoiseamount-insert_quotes-: ${track_2_parameters[3]}}
-                  },"
+                  \"type\": \"multitrack\", \"id\": ${track_2_parameters[4]%\"*} $(($i+1))\",
+                  \"service\": \"$AUPHONIC_IN\",
+                  \"input_file\": \"${input_filenames[$i]}\",
+                  \"algorithms\": {\"hipfilter\": ${track_2_parameters[0]}, \"backforeground\": ${track_2_parameters[1]}, \"denoise\": ${track_2_parameters[2]}, \"denoiseamount\": ${track_2_parameters[3]}}"
         done
-   
-        AUPHONIC_TRACK_ADD=$(sed 's#-insert_quotes-#"#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#\: " #\: "#g' | sed 's# ",#",#g' | sed 's#},$#}#g')
-   
+        AUPHONIC_TRACK_ADD+="           
+                  }"
+        AUPHONIC_TRACK_ADD=$(sed 's#\: "  *#\: "#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#  *",#",#g')
+
         JSON=$(curl -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -460,23 +460,23 @@ if $AUPHONIC ; then
       # no multi preset       
       AUPHONIC_TRACK_ADD="           
                 {
-                -insert_quotes-type-insert_quotes-: -insert_quotes-multitrack-insert_quotes-, -insert_quotes-id-insert_quotes-: -insert_quotes-Local-insert_quotes-,
-                -insert_quotes-service-insert_quotes-: -insert_quotes-$AUPHONIC_IN-insert_quotes-,
-                -insert_quotes-input_file-insert_quotes-: -insert_quotes-${input_filenames[0]}-insert_quotes-,
-                -insert_quotes-algorithms-insert_quotes-: {-insert_quotes-hipfilter-insert_quotes-: false, -insert_quotes-denoise-insert_quotes-: false}
-                },"
+                \"type\": \"multitrack\", \"id\": \"Local\",
+                \"service\": \"$AUPHONIC_IN\",
+                \"input_file\": \"${input_filenames[0]}\",
+                \"algorithms\": {\"hipfilter\": false, \"denoise\": false}"
       for (( i=1; i < ${TRACKS}; i++ )); do
         AUPHONIC_TRACK_ADD+="           
+                },
                 {
-                -insert_quotes-type-insert_quotes-: -insert_quotes-multitrack-insert_quotes-, -insert_quotes-id-insert_quotes-: -insert_quotes-Remote $i-insert_quotes-,
-                -insert_quotes-service-insert_quotes-: -insert_quotes-$AUPHONIC_IN-insert_quotes-,
-                -insert_quotes-input_file-insert_quotes-: -insert_quotes-${input_filenames[$i]}-insert_quotes-,
-                -insert_quotes-algorithms-insert_quotes-: {-insert_quotes-hipfilter-insert_quotes-: false, -insert_quotes-denoise-insert_quotes-: false}
-                },"
+                \"type\": \"multitrack\", \"id\": \"Remote $i\",
+                \"service\": \"$AUPHONIC_IN\",
+                \"input_file\": \"${input_filenames[$i]}\",
+                \"algorithms\": {\"hipfilter\": false, \"denoise\": false}"
       done
-   
-      AUPHONIC_TRACK_ADD=$(sed 's#-insert_quotes-#"#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#\: " #\: "#g' | sed 's# ",#",#g' | sed 's#},$#}#g')
-      
+      AUPHONIC_TRACK_ADD+="           
+                }"
+      AUPHONIC_TRACK_ADD=$( sed 's#\: "  *#\: "#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#  *",#",#g' )
+      printf "%s" "$AUPHONIC_TRACK_ADD"
       JSON=$(curl -X POST -H "Content-Type: application/json" \
        https://auphonic.com/api/productions.json \
        -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -558,8 +558,8 @@ if $AUPHONIC ; then
     # download and move
     for url in "${URLS[@]}" ; do    
       # trim leading and trailing spaces, just to be sure
-      url="${url#"${url%%[![:space:]]*}"}"
-      url="${url%"${url##*[![:space:]]}"}"
+      url="${url#"${url%%[![:blank:]]*}"}"
+      url="${url%"${url##*[![:blank:]]}"}"
       DOWNLOADITEM="${url##*/}"
 #      cd "$OUTPUT_DIR" && { curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" ; cd - >/dev/null; } 
 ( cd "$OUTPUT_DIR" ; curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" )
