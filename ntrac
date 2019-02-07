@@ -552,13 +552,17 @@ if $AUPHONIC ; then
 
   # download the results from Auphonic
   if [ -n "$DOWNLOAD_FLAG" ] || [[ "$DESTINATION" == /** ]] ; then
-    URLS=$(grep 'download_url' <<< "$JSON" | sed 's#^.*"download_url": "##g' | sed 's#",##g' | sed 's#"##g' )
+    URLS=$(grep 'download_url' <<< "$JSON" | sed 's#^.*"download_url": "##g' | sed 's#",*##g' )
     # turn this into proper array:
     IFS=$'\n' URLS=(${URLS})
     # download and move
     for url in "${URLS[@]}" ; do    
+      # trim leading and trailing spaces, just to be sure
+      url="${url#"${url%%[![:space:]]*}"}"
+      url="${url%"${url##*[![:space:]]}"}"
       DOWNLOADITEM="${url##*/}"
-      cd "$OUTPUT_DIR" && { curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" ; cd - >/dev/null; } 
+#      cd "$OUTPUT_DIR" && { curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" ; cd - >/dev/null; } 
+( cd "$OUTPUT_DIR" ; curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" )
     done
   fi
   
