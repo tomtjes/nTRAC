@@ -1,12 +1,12 @@
 # FreePBX Configuration
-How to make FreePBX record the two legs of a conversation separately and pass the files to 2CRT for further processing.
+How to make FreePBX record the two legs of a conversation separately and pass the files to nTRAC for further processing.
 
 ## On Demand Recordings
 To automatically transcribe all on-demand recordings (recordings that you initiate by dialing `*1` during a call), paste the following into the file `/etc/asterisk/extensions_override_freepbx.conf`:
 ``` 
 [macro-one-touch-record]
 include => macro-one-touch-record-custom
-exten => s,n,Set(ONETOUCH_REC_SCRIPT_STATUS=)
+exten => s,1,Set(ONETOUCH_REC_SCRIPT_STATUS=)
 exten => s,n,Set(MONITOR_EXEC_ARGS=--google --en_US)
 exten => s,n,System(${AMPBIN}/one_touch_record.php "${CHANNEL(name)}")
 exten => s,n,Noop(ONETOUCH_REC_SCRIPT_STATUS: [${ONETOUCH_REC_SCRIPT_STATUS}])
@@ -25,8 +25,8 @@ exten => s,n(end),MacroExit()
 In line 4, you can modify or add the parameters to your liking. The three files (channel 1, channel 2, output) will be passed to the script automatically.
 
 Next, edit the file `/etc/asterisk/globals_custom.conf` and add the line:
-`MONITOR_EXEC=/usr/local/bin/2crt.sh`
+`MONITOR_EXEC=/usr/local/bin/ntrac`
 
-Lastly, issue the command `service amportal restart` to make the system aware of your changes.
+Lastly, issue the command `fwconsole restart` to make the system aware of your changes.
 
-Tested with Incredible PBX 13-13
+Tested with Incredible PBX 13-13 and 16-15
