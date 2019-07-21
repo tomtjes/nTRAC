@@ -95,7 +95,7 @@ fi
 ####################### VARIABLES ########################################################
 
 # command line variables
-input_files=( )
+input_files_sln16=( )
 
 while (( $# )); do
   case $1 in
@@ -112,16 +112,27 @@ while (( $# )); do
     -h|--help) help_and_exit 0 ;;
     -*)        printf 'Unknown option: %q\n\n' "$1"
                help_and_exit 1 ;;
-    *)         input_files+=( "$1" ) ;;
+    *)         input_files_sln16+=( "$1" ) ;;
   esac
   shift
 done
 
+# convert sln16 to wav
+input_files=( )
+for inputfile in "${input_files_sln16[@]}" ; do
+   if [ "${inputfile##*.}" = "sln16" ] ; then
+     test -f "$inputfile" && $SOX -t raw -r 16k -e signed-integer -b 16 -c 1 "$inputfile" "${inputfile%.*}".wav
+     test -f "${inputfile%.*}".wav && rm "$inputfile"
+     input_files+=( "${inputfile%.*}".wav )
+   else
+     input_files+=( "$inputfile" )
+   fi
+done
+
+# get variables
 MIX="${input_files[@]: -1}"                   # last file = output file
 TRACKS=$((${#input_files[@]}-1))              # number of tracks (out/local/host + in/remotes/guests)
 unset "input_files[${#input_files[@]}-1]"     # remove MIX from array
-
-# more variables
 OUTPUT_DIR="${MIX%/*}"                        # e.g. /var/spool/asterisk/monitor/year/month/day
 FILENAME="${MIX##*/}"                         # e.g. recording1234.wav
 BASENAME="${FILENAME%.*}"                     # e.g. recording1234
