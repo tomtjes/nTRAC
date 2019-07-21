@@ -33,6 +33,14 @@ if [ "$debug_mode" = true ] ; then
   exec 1>"$log_file" 2>&1
 fi
 
+echo "\nUser: $USER \n"
+echo "\nHOME: $HOME \n"
+if [ "$(id -u)" = "0" ]; then
+   echo "\nUser seems to be root \n"
+fi
+if [[ $EUID -eq 0 ]]; then
+   echo "\nUser seems to be root \n"
+fi
 ####################### FUNCTIONS ########################################################
 
 # help and exit
@@ -63,18 +71,18 @@ output () {
     return 0     # all good
   fi
  else
-  rclone "$1" "$2" "$DESTINATION"
+  rclone -vv --config="$rcloneconfig" "$1" "$2" "$DESTINATION"
  fi
 }
 
 # cleanup
 cleanup() {
 if [[ "$1" == google ]] ; then
-  rclone delete "$GOOGLE_RCLONE/$BASENAME-nchannel.flac"
+  rclone --config="$rcloneconfig" delete "$GOOGLE_RCLONE/$BASENAME-nchannel.flac"
 fi
 if [[ "$1" == auphonic ]] && [ "$AUPHONIC_RCLONE" != "$DESTINATION" ] && [ "$AUPHONIC_IN" != "$AUPHONIC_OUT" ] ; then
   for filename in "${input_filenames[@]}" ; do
-    rclone delete "$AUPHONIC_RCLONE/$filename"
+    rclone --config="$rcloneconfig" delete "$AUPHONIC_RCLONE/$filename"
   done
 fi
 if [[ "$1" == all ]] && [ "$DELETE_INPUT_FILES" = true ] && [[ "$DESTINATION" != "$OUTPUT_DIR" ]] ; then
@@ -210,7 +218,7 @@ if $GOOGLE ; then
 
   SAMPLERATE=$(soxi -r "$MIX_nchannel")
   
-  test -r "$MIX_nchannel" && rclone move "$MIX_nchannel" "$GOOGLE_RCLONE"
+  test -r "$MIX_nchannel" && rclone --config="$rcloneconfig" move "$MIX_nchannel" "$GOOGLE_RCLONE"
 
   GOOGLE_BUCKET="${GOOGLE_RCLONE#*:}"
 
@@ -256,41 +264,42 @@ if $GOOGLE ; then
     fi
   done
 
-# extract transcript from json  
-# 1. swap transcript and channelTag sections
-  SEDMAGIC="grep -E 'transcript|channelTag' <<< '$JSON' | \
- sed 'N;    
- s/\(.*transcript.*\)\n\(.*channelTag.*\)/\2\
-\1/' | \
- sed "
-  for (( i=1; i <= $TRACKS; i++ ));
-# 2. check if consecutive channelTags are equal, only keep the first one 
-  do
-  SEDMAGIC+=" -e '
-   /channelTag"'"'": "$i"/{
-   x
-    /channelTag"'"'": "$i"/!{
-    x
-    h
-    b
-    }
-   x
-   d
-   }
-   '"
-  done
-# 3. replace channelTags with names
- SEDMAGIC+=" | sed -e 's/ *"'"'"channelTag"'"'": 1,/LOCAL:\\
-/g'"
+  # extract transcript from json  
+  # 1. swap transcript and channelTag sections
+  JSON=$( echo "$JSON" | grep -E 'transcript|channelTag' )
+  # ...but only if channelTag exists in file, i.e. if it's a multitrack production
+  if [[ $JSON == *"channelTag"* ]] ; then
+    JSON=$( echo "$JSON" | sed "N    
+ s#\(.*transcript.*\)\n\(.*channelTag.*\)#\2\
+\1#" )
 
-  for (( i=2; i <= ${TRACKS}; i++ ));
-  do
-  SEDMAGIC+=" -e 's/ *"'"'"channelTag"'"'": "$i",/REMOTE "$((i - 1))":\\
-/g'"
-  done
-  SEDMAGIC+=" -e 's/ *"'"'"transcript"'"'": "'"'" *//g' -e 's/"'"'",$//g'"
+  # 2. check if consecutive channelTags are equal, only keep the first one  
+    SEDMAGIC="sed"
+    for (( i=1; i <= $TRACKS; i++ )) ; do
+    SEDMAGIC+=" -e '
+     /channelTag"'"'": "$i"/{
+     x
+      /channelTag"'"'": "$i"/!{
+      x
+      h
+      b
+      }
+     x
+     d
+     }
+     '"
+    done
+    JSON=$( echo "$JSON" | eval "$SEDMAGIC" )
   
-  eval "$SEDMAGIC" > "$TRANSCRIPT"
+    # 3. replace channelTags with names
+    for (( i=2; i <= $TRACKS; i++ )) ; do
+      JSON=$( echo "$JSON" | sed "s# *.channelTag.: $i.#REMOTE $((i - 1)):#g" )
+    done
+  fi
+  JSON=$( echo "$JSON" | sed -e 's/  *.channelTag.: 1,/LOCAL:/g' -e 's/  *.transcript.: . */\
+/g' -e 's/\",//g' )
+
+  echo "$JSON" > "$TRANSCRIPT" 
   output move "$TRANSCRIPT"
 
   cleanup google
@@ -314,7 +323,7 @@ if $AUPHONIC ; then
   }
   
   for inputfile in "${input_files[@]}" ; do
-    rclone copy "$inputfile" "$AUPHONIC_RCLONE"
+    rclone --config="$rcloneconfig" copy "$inputfile" "$AUPHONIC_RCLONE"
   done
    
   if [ "$TRACKS" -eq 1 ] ; then
@@ -426,23 +435,23 @@ if $AUPHONIC ; then
    
         AUPHONIC_TRACK_ADD="           
                   {
-                  -insert_quotes-type-insert_quotes-: -insert_quotes-multitrack-insert_quotes-, -insert_quotes-id-insert_quotes-: ${track_1_parameters[4]},
-                  -insert_quotes-service-insert_quotes-: -insert_quotes-$AUPHONIC_IN-insert_quotes-,
-                  -insert_quotes-input_file-insert_quotes-: -insert_quotes-${input_filenames[0]}-insert_quotes-,
-                  -insert_quotes-algorithms-insert_quotes-: {-insert_quotes-hipfilter-insert_quotes-: ${track_1_parameters[0]}, -insert_quotes-backforeground-insert_quotes-: ${track_1_parameters[1]}, -insert_quotes-denoise-insert_quotes-: ${track_1_parameters[2]}, -insert_quotes-denoiseamount-insert_quotes-: ${track_1_parameters[3]}}
-                  },"
+                  \"type\": \"multitrack\", \"id\": ${track_1_parameters[4]},
+                  \"service\": \"$AUPHONIC_IN\",
+                  \"input_file\": \"${input_filenames[0]}\",
+                  \"algorithms\": {\"hipfilter\": ${track_1_parameters[0]}, \"backforeground\": ${track_1_parameters[1]}, \"denoise\": ${track_1_parameters[2]}, \"denoiseamount\": ${track_1_parameters[3]}}"
         for (( i=1; i < ${TRACKS}; i++ )); do
           AUPHONIC_TRACK_ADD+="           
+                  },
                   {
-                  -insert_quotes-type-insert_quotes-: -insert_quotes-multitrack-insert_quotes-, -insert_quotes-id-insert_quotes-: ${track_2_parameters[4]%\"*} $(($i+1))-insert_quotes-,
-                  -insert_quotes-service-insert_quotes-: -insert_quotes-$AUPHONIC_IN-insert_quotes-,
-                  -insert_quotes-input_file-insert_quotes-: -insert_quotes-${input_filenames[$i]}-insert_quotes-,
-                  -insert_quotes-algorithms-insert_quotes-: {-insert_quotes-hipfilter-insert_quotes-: ${track_2_parameters[0]}, -insert_quotes-backforeground-insert_quotes-: ${track_2_parameters[1]}, -insert_quotes-denoise-insert_quotes-: ${track_2_parameters[2]}, -insert_quotes-denoiseamount-insert_quotes-: ${track_2_parameters[3]}}
-                  },"
+                  \"type\": \"multitrack\", \"id\": ${track_2_parameters[4]%\"*} $(($i+1))\",
+                  \"service\": \"$AUPHONIC_IN\",
+                  \"input_file\": \"${input_filenames[$i]}\",
+                  \"algorithms\": {\"hipfilter\": ${track_2_parameters[0]}, \"backforeground\": ${track_2_parameters[1]}, \"denoise\": ${track_2_parameters[2]}, \"denoiseamount\": ${track_2_parameters[3]}}"
         done
-   
-        AUPHONIC_TRACK_ADD=$(sed 's#-insert_quotes-#"#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#\: " #\: "#g' | sed 's# ",#",#g' | sed 's#},$#}#g')
-   
+        AUPHONIC_TRACK_ADD+="           
+                  }"
+        AUPHONIC_TRACK_ADD=$(sed 's#\: "  *#\: "#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#  *",#",#g')
+
         JSON=$(curl -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -459,23 +468,23 @@ if $AUPHONIC ; then
       # no multi preset       
       AUPHONIC_TRACK_ADD="           
                 {
-                -insert_quotes-type-insert_quotes-: -insert_quotes-multitrack-insert_quotes-, -insert_quotes-id-insert_quotes-: -insert_quotes-Local-insert_quotes-,
-                -insert_quotes-service-insert_quotes-: -insert_quotes-$AUPHONIC_IN-insert_quotes-,
-                -insert_quotes-input_file-insert_quotes-: -insert_quotes-${input_filenames[0]}-insert_quotes-,
-                -insert_quotes-algorithms-insert_quotes-: {-insert_quotes-hipfilter-insert_quotes-: false, -insert_quotes-denoise-insert_quotes-: false}
-                },"
+                \"type\": \"multitrack\", \"id\": \"Local\",
+                \"service\": \"$AUPHONIC_IN\",
+                \"input_file\": \"${input_filenames[0]}\",
+                \"algorithms\": {\"hipfilter\": false, \"denoise\": false}"
       for (( i=1; i < ${TRACKS}; i++ )); do
         AUPHONIC_TRACK_ADD+="           
+                },
                 {
-                -insert_quotes-type-insert_quotes-: -insert_quotes-multitrack-insert_quotes-, -insert_quotes-id-insert_quotes-: -insert_quotes-Remote $i-insert_quotes-,
-                -insert_quotes-service-insert_quotes-: -insert_quotes-$AUPHONIC_IN-insert_quotes-,
-                -insert_quotes-input_file-insert_quotes-: -insert_quotes-${input_filenames[$i]}-insert_quotes-,
-                -insert_quotes-algorithms-insert_quotes-: {-insert_quotes-hipfilter-insert_quotes-: false, -insert_quotes-denoise-insert_quotes-: false}
-                },"
+                \"type\": \"multitrack\", \"id\": \"Remote $i\",
+                \"service\": \"$AUPHONIC_IN\",
+                \"input_file\": \"${input_filenames[$i]}\",
+                \"algorithms\": {\"hipfilter\": false, \"denoise\": false}"
       done
-   
-      AUPHONIC_TRACK_ADD=$(sed 's#-insert_quotes-#"#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#\: " #\: "#g' | sed 's# ",#",#g' | sed 's#},$#}#g')
-      
+      AUPHONIC_TRACK_ADD+="           
+                }"
+      AUPHONIC_TRACK_ADD=$( sed 's#\: "  *#\: "#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#  *",#",#g' )
+      printf "%s" "$AUPHONIC_TRACK_ADD"
       JSON=$(curl -X POST -H "Content-Type: application/json" \
        https://auphonic.com/api/productions.json \
        -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -551,13 +560,17 @@ if $AUPHONIC ; then
 
   # download the results from Auphonic
   if [ -n "$DOWNLOAD_FLAG" ] || [[ "$DESTINATION" == /** ]] ; then
-    URLS=$(grep 'download_url' <<< "$JSON" | sed 's#^.*"download_url": "##g' | sed 's#",##g' | sed 's#"##g' )
+    URLS=$(grep 'download_url' <<< "$JSON" | sed 's#^.*"download_url": "##g' | sed 's#",*##g' )
     # turn this into proper array:
     IFS=$'\n' URLS=(${URLS})
     # download and move
     for url in "${URLS[@]}" ; do    
+      # trim leading and trailing spaces, just to be sure
+      url="${url#"${url%%[![:blank:]]*}"}"
+      url="${url%"${url##*[![:blank:]]}"}"
       DOWNLOADITEM="${url##*/}"
-      cd "$OUTPUT_DIR" && { curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" ; cd - >/dev/null; } 
+#      cd "$OUTPUT_DIR" && { curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" ; cd - >/dev/null; } 
+( cd "$OUTPUT_DIR" ; curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" )
     done
   fi
   
