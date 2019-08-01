@@ -33,6 +33,14 @@ if [ "$debug_mode" = true ] ; then
   exec 1>"$log_file" 2>&1
 fi
 
+echo "\nUser: $USER \n"
+echo "\nHOME: $HOME \n"
+if [ "$(id -u)" = "0" ]; then
+   echo "\nUser seems to be root \n"
+fi
+if [[ $EUID -eq 0 ]]; then
+   echo "\nUser seems to be root \n"
+fi
 ####################### FUNCTIONS ########################################################
 
 # help and exit
@@ -51,7 +59,7 @@ EOF
 output () {
  if [[ $DESTINATION == /** ]] ; then
   local NEWFILE="$DESTINATION/$(basename -- "$2")"
-  if [ "$NEWFILE" != "$2" ] ; then 
+  if [ "$NEWFILE" != "$2" ] ; then
     if [[ "$1" == copy ]] ; then
       mkdir -p "$DESTINATION" && cp "$2" "$NEWFILE"
     elif [[ "$1" == move ]] ; then
@@ -63,18 +71,18 @@ output () {
     return 0     # all good
   fi
  else
-  rclone "$1" "$2" "$DESTINATION"
+  rclone -vv --config="$rcloneconfig" "$1" "$2" "$DESTINATION"
  fi
 }
 
 # cleanup
 cleanup() {
 if [[ "$1" == google ]] ; then
-  rclone delete "$GOOGLE_RCLONE/$BASENAME-nchannel.flac"
+  rclone --config="$rcloneconfig" delete "$GOOGLE_RCLONE/$BASENAME-nchannel.flac"
 fi
 if [[ "$1" == auphonic ]] && [ "$AUPHONIC_RCLONE" != "$DESTINATION" ] && [ "$AUPHONIC_IN" != "$AUPHONIC_OUT" ] ; then
   for filename in "${input_filenames[@]}" ; do
-    rclone delete "$AUPHONIC_RCLONE/$filename"
+    rclone --config="$rcloneconfig" delete "$AUPHONIC_RCLONE/$filename"
   done
 fi
 if [[ "$1" == all ]] && [ "$DELETE_INPUT_FILES" = true ] && [[ "$DESTINATION" != "$OUTPUT_DIR" ]] ; then
@@ -87,7 +95,7 @@ fi
 ####################### VARIABLES ########################################################
 
 # command line variables
-input_files=( )
+input_files_sln16=( )
 
 while (( $# )); do
   case $1 in
@@ -104,16 +112,27 @@ while (( $# )); do
     -h|--help) help_and_exit 0 ;;
     -*)        printf 'Unknown option: %q\n\n' "$1"
                help_and_exit 1 ;;
-    *)         input_files+=( "$1" ) ;;
+    *)         input_files_sln16+=( "$1" ) ;;
   esac
   shift
 done
 
+# convert sln16 to wav
+input_files=( )
+for inputfile in "${input_files_sln16[@]}" ; do
+   if [ "${inputfile##*.}" = "sln16" ] ; then
+     test -f "$inputfile" && $SOX -t raw -r 16k -e signed-integer -b 16 -c 1 "$inputfile" "${inputfile%.*}".wav
+     test -f "${inputfile%.*}".wav && rm "$inputfile"
+     input_files+=( "${inputfile%.*}".wav )
+   else
+     input_files+=( "$inputfile" )
+   fi
+done
+
+# get variables
 MIX="${input_files[@]: -1}"                   # last file = output file
 TRACKS=$((${#input_files[@]}-1))              # number of tracks (out/local/host + in/remotes/guests)
 unset "input_files[${#input_files[@]}-1]"     # remove MIX from array
-
-# more variables
 OUTPUT_DIR="${MIX%/*}"                        # e.g. /var/spool/asterisk/monitor/year/month/day
 FILENAME="${MIX##*/}"                         # e.g. recording1234.wav
 BASENAME="${FILENAME%.*}"                     # e.g. recording1234
@@ -122,7 +141,7 @@ EXTENSION="${FILENAME##*.}"                   # e.g. wav
 # all filenames
 input_filenames=( )
 for inputfile in "${input_files[@]}" ; do
-  input_filenames+=( "$(basename -- "$inputfile")" ) 
+  input_filenames+=( "$(basename -- "$inputfile")" )
 done
 
 # if last file was passed without a path, try to fix it
@@ -209,8 +228,8 @@ if $GOOGLE ; then
   fi
 
   SAMPLERATE=$(soxi -r "$MIX_nchannel")
-  
-  test -r "$MIX_nchannel" && rclone move "$MIX_nchannel" "$GOOGLE_RCLONE"
+
+  test -r "$MIX_nchannel" && rclone --config="$rcloneconfig" move "$MIX_nchannel" "$GOOGLE_RCLONE"
 
   GOOGLE_BUCKET="${GOOGLE_RCLONE#*:}"
 
@@ -256,16 +275,16 @@ if $GOOGLE ; then
     fi
   done
 
-  # extract transcript from json  
+  # extract transcript from json
   # 1. swap transcript and channelTag sections
   JSON=$( echo "$JSON" | grep -E 'transcript|channelTag' )
   # ...but only if channelTag exists in file, i.e. if it's a multitrack production
   if [[ $JSON == *"channelTag"* ]] ; then
-    JSON=$( echo "$JSON" | sed "N    
+    JSON=$( echo "$JSON" | sed "N
  s#\(.*transcript.*\)\n\(.*channelTag.*\)#\2\
 \1#" )
 
-  # 2. check if consecutive channelTags are equal, only keep the first one  
+  # 2. check if consecutive channelTags are equal, only keep the first one
     SEDMAGIC="sed"
     for (( i=1; i <= $TRACKS; i++ )) ; do
     SEDMAGIC+=" -e '
@@ -282,7 +301,7 @@ if $GOOGLE ; then
      '"
     done
     JSON=$( echo "$JSON" | eval "$SEDMAGIC" )
-  
+
     # 3. replace channelTags with names
     for (( i=2; i <= $TRACKS; i++ )) ; do
       JSON=$( echo "$JSON" | sed "s# *.channelTag.: $i.#REMOTE $((i - 1)):#g" )
@@ -291,7 +310,7 @@ if $GOOGLE ; then
   JSON=$( echo "$JSON" | sed -e 's/  *.channelTag.: 1,/LOCAL:/g' -e 's/  *.transcript.: . */\
 /g' -e 's/\",//g' )
 
-  echo "$JSON" > "$TRANSCRIPT" 
+  echo "$JSON" > "$TRANSCRIPT"
   output move "$TRANSCRIPT"
 
   cleanup google
@@ -313,7 +332,7 @@ if $AUPHONIC ; then
       return 0
     fi
   }
-  
+
   auphonic_add_tracks() {
     AUPHONIC_TRACKS="            {
             \"type\": \"multitrack\", \"id\": ${track_1_parameters[4]},
@@ -321,7 +340,7 @@ if $AUPHONIC ; then
             \"input_file\": \"${input_filenames[0]}\",
             \"algorithms\": {\"hipfilter\": ${track_1_parameters[0]}, \"backforeground\": ${track_1_parameters[1]}, \"denoise\": ${track_1_parameters[2]}, \"denoiseamount\": ${track_1_parameters[3]}}"
     for (( i=1; i < ${TRACKS}; i++ )); do
-      AUPHONIC_TRACKS+="           
+      AUPHONIC_TRACKS+="
             },
             {
             \"type\": \"multitrack\", \"id\": ${track_2_parameters[4]%\"*} $i\",
@@ -329,22 +348,22 @@ if $AUPHONIC ; then
             \"input_file\": \"${input_filenames[$i]}\",
             \"algorithms\": {\"hipfilter\": ${track_2_parameters[0]}, \"backforeground\": ${track_2_parameters[1]}, \"denoise\": ${track_2_parameters[2]}, \"denoiseamount\": ${track_2_parameters[3]}}"
     done
-    AUPHONIC_TRACKS+="           
+    AUPHONIC_TRACKS+="
             }"
     AUPHONIC_TRACKS=$( sed 's#\: "  *#\: "#g' <<< "$AUPHONIC_TRACKS" | sed 's#  *",#",#g' )
   }
-    
+
   for inputfile in "${input_files[@]}" ; do
-    rclone copy "$inputfile" "$AUPHONIC_RCLONE"
+    rclone --config="$rcloneconfig" copy "$inputfile" "$AUPHONIC_RCLONE"
   done
-   
+
   if [ "$TRACKS" -eq 1 ] ; then
     if [ -n "$AUPHONIC_PRESET_SINGLE" ] ; then
       # query Auphonic for preset details
       JSON=$(curl https://auphonic.com/api/preset/$AUPHONIC_PRESET_SINGLE.json -u $AUPHONIC_USER:$AUPHONIC_PASS)
       # check if outgoing services are defined or if results should be downloaded later
       DOWNLOAD_FLAG="$(grep 'outgoing_services' <<< "$JSON" | grep '\]')"
-        
+
       JSON=$(curl -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -373,14 +392,14 @@ if $AUPHONIC ; then
               "language": "'"$LANGUAGE"'"
               }
          }')
-    fi      
-  else 
+    fi
+  else
     # tracks > 1
     # arrays for Auphonic production parameters
     declare -a track_1_parameters=(false '"auto"' false 0 '"LOCAL"')
     # array: 0:hipfilter 1:"backforeground" 2:denoise 3:denoiseamount 4:"id"
     declare -a track_2_parameters=(false '"auto"' false 0 '"REMOTE"')
-    
+
     if [ -n "$AUPHONIC_PRESET_MULTI" ] ; then
       # query Auphonic for preset details
       JSON=$(curl https://auphonic.com/api/preset/$AUPHONIC_PRESET_MULTI.json -u $AUPHONIC_USER:$AUPHONIC_PASS)
@@ -391,7 +410,7 @@ if $AUPHONIC ; then
         # extract track IDs (names) from preset
         track_1_parameters[4]=`cat $JSON | grep '"id":' -m 1 | sed 's#^.*"id": "##g' | sed 's#", $##g'`
         track_2_parameters[4]=`cat $JSON | grep '"id":' -m 2 | tail -n1 | sed 's#^.*"id": "##g' | sed 's#", $##g'`
-      
+
         JSON=$(curl -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -410,7 +429,7 @@ if $AUPHONIC ; then
                   "input_file": "'"${input_filenames[1]}"'"
                   }
                 ]
-             }') 
+             }')
       else
         # tracks > 2
         # build a template for tracks from preset
@@ -436,18 +455,17 @@ if $AUPHONIC ; then
             let "tracknumber+=1"
           fi
         done <<< "$JSON"
-        
+
   	    j=0
-        for parameter in "hipfilter" "backforeground" "denoise" "denoiseamount" "id" ; do     
+        for parameter in "hipfilter" "backforeground" "denoise" "denoiseamount" "id" ; do
         # getting the actual parameters for track 1 and 2
             track_1_parameters[$j]=$(grep -m 1 $parameter <<< "${track_template[1]}" | sed 's#.*"'"$parameter"'": ##g' | sed 's#",#"#g' | sed 's#, $##g' )
             track_2_parameters[$j]=$(grep -m 1 $parameter <<< "${track_template[2]}" | sed 's#.*"'"$parameter"'": ##g' | sed 's#",#"#g' | sed 's#, $##g' )
             let "j+=1"
         done
-        
+
         auphonic_add_tracks
-        printf "%s" "$AUPHONIC_TRACKS"
-        
+
         JSON=$(curl -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -458,13 +476,12 @@ if $AUPHONIC ; then
                 "multi_input_files": [
                   '"$AUPHONIC_TRACKS"'
                 ]
-             }')     
+             }')
       fi  # <-- tracks =2 / >2
     else
-      # no multi preset       
+      # no multi preset
       auphonic_add_tracks
-      printf "%s" "$AUPHONIC_TRACKS"
-      
+
       JSON=$(curl -X POST -H "Content-Type: application/json" \
        https://auphonic.com/api/productions.json \
        -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -485,14 +502,14 @@ if $AUPHONIC ; then
                 "gate": false
                },
               "is_multitrack": true
-           }')    
+           }')
     fi # <-- preset exists
   fi # <-- tracks > 1
 
   auphonic_error_check
   # extract production ID from response
   UUID=$(grep uuid -m 1 <<< "$JSON" | sed 's#^.*"uuid": "##g' | sed 's#", $##g')
-  
+
   # manage file output for no-preset productions
   if [[ "$TRACKS" -eq 1 && -z "$AUPHONIC_PRESET_SINGLE" ]] || [[ "$TRACKS" -gt 1 && -z "$AUPHONIC_PRESET_MULTI" ]] ; then
     if [ -n "$AUPHONIC_OUT" ] ; then
@@ -515,20 +532,20 @@ if $AUPHONIC ; then
            -d '[{"format":"input"}]' # > /dev/null
         fi
       fi
-    else 
+    else
       DOWNLOAD_FLAG="download files"
     fi
-  fi  
-    
+  fi
+
   # start production
   JSON=$(curl -X POST https://auphonic.com/api/production/$UUID/start.json -u $AUPHONIC_USER:$AUPHONIC_PASS)
   auphonic_error_check
- 
+
   # check once every 30 seconds, if production is done. Abort after checking set number of times
   TIMER=$(($TIMEOUT * 2))
   while [[ $JSON != *"\"status_string\": \"Done\""* ]] ; do
     sleep 30
-    JSON=$(curl https://auphonic.com/api/production/$UUID.json -u $AUPHONIC_USER:$AUPHONIC_PASS)    
+    JSON=$(curl https://auphonic.com/api/production/$UUID.json -u $AUPHONIC_USER:$AUPHONIC_PASS)
     auphonic_error_check
     if [ $TIMER -eq 0 ] ; then
       printf 'Auphonic transcription timed out\n\n'
@@ -544,7 +561,7 @@ if $AUPHONIC ; then
     # turn this into proper array:
     IFS=$'\n' urls=(${urls})
     # download and move
-    for url in "${urls[@]}" ; do    
+    for url in "${urls[@]}" ; do
       # trim leading and trailing spaces, just to be sure
       url="${url#"${url%%[![:blank:]]*}"}"
       url="${url%"${url##*[![:blank:]]}"}"
@@ -552,7 +569,7 @@ if $AUPHONIC ; then
       ( cd "$OUTPUT_DIR" ; curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$url_filename" )
     done
   fi
-  
+
   cleanup auphonic
 fi
 #done Auphonic transcription

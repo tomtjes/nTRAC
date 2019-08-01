@@ -6,10 +6,10 @@ GOOGLE_KEY="AIzaSyDr7fEyGyA19CroJptSukVg2vU08F8lEbU"  # API key for your project
 LANGUAGE_ALT="'fr-FR', 'de-DE'"                       # Google can auto-detect the language. Provide alternatives to default language here.
                                                       #   (Using this, you can have multiple languages in one recording as well)
 # Auphonic
-AUPHONIC_USER="myusername"                      
+AUPHONIC_USER="myusername"
 AUPHONIC_PASS="myPassw0rd"
 AUPHONIC_RCLONE="Auphonic:"                           # Rclone remote for file exchange with Auphonic, can be same as DESTINATION or GOOGLE_RCLONE
-AUPHONIC_IN="FWT6OWLDU82r3EPqSsHgce"                  # UUID of service for incoming file transfers, must point to same location as AUPHONIC_RCLONE 
+AUPHONIC_IN="FWT6OWLDU82r3EPqSsHgce"                  # UUID of service for incoming file transfers, must point to same location as AUPHONIC_RCLONE
 AUPHONIC_PRESET_MULTI="L52aswOLCUJYAhPcHeNVeE"        # UUID of an Auphonic multitrack preset. Optional, BUT if you don't provide one, AUPHONIC_STT mandatory
 AUPHONIC_PRESET_SINGLE=""                             # UUID of an Auphonic preset, in case you have single-file-recordings. Optional, BUT if you don't provide a UUID here, AUPHONIC_STT mandatory
 AUPHONIC_STT="Qw5wpWCyidowl98Edj8b49"                 # UUID of automatic speech recognition service, configured on auphonic.com
@@ -31,6 +31,9 @@ DESTINATION=""                      # leave empty (or set to "dir") to use direc
 
 # location of SOX, e.g. /usr/bin/sox
 SOX=sox
+
+# Rclone config file
+rcloneconfig="$HOME/.config/rclone/rclone.conf"
 
 # number of minutes after which transcription should be considered failed
 TIMEOUT=30
