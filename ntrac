@@ -314,6 +314,26 @@ if $AUPHONIC ; then
     fi
   }
   
+  auphonic_add_tracks() {
+    AUPHONIC_TRACKS="            {
+            \"type\": \"multitrack\", \"id\": ${track_1_parameters[4]},
+            \"service\": \"$AUPHONIC_IN\",
+            \"input_file\": \"${input_filenames[0]}\",
+            \"algorithms\": {\"hipfilter\": ${track_1_parameters[0]}, \"backforeground\": ${track_1_parameters[1]}, \"denoise\": ${track_1_parameters[2]}, \"denoiseamount\": ${track_1_parameters[3]}}"
+    for (( i=1; i < ${TRACKS}; i++ )); do
+      AUPHONIC_TRACKS+="           
+            },
+            {
+            \"type\": \"multitrack\", \"id\": ${track_2_parameters[4]%\"*} $i\",
+            \"service\": \"$AUPHONIC_IN\",
+            \"input_file\": \"${input_filenames[$i]}\",
+            \"algorithms\": {\"hipfilter\": ${track_2_parameters[0]}, \"backforeground\": ${track_2_parameters[1]}, \"denoise\": ${track_2_parameters[2]}, \"denoiseamount\": ${track_2_parameters[3]}}"
+    done
+    AUPHONIC_TRACKS+="           
+            }"
+    AUPHONIC_TRACKS=$( sed 's#\: "  *#\: "#g' <<< "$AUPHONIC_TRACKS" | sed 's#  *",#",#g' )
+  }
+    
   for inputfile in "${input_files[@]}" ; do
     rclone copy "$inputfile" "$AUPHONIC_RCLONE"
   done
@@ -424,26 +444,10 @@ if $AUPHONIC ; then
             track_2_parameters[$j]=$(grep -m 1 $parameter <<< "${track_template[2]}" | sed 's#.*"'"$parameter"'": ##g' | sed 's#",#"#g' | sed 's#, $##g' )
             let "j+=1"
         done
-   
-        AUPHONIC_TRACK_ADD="           
-                  {
-                  \"type\": \"multitrack\", \"id\": ${track_1_parameters[4]},
-                  \"service\": \"$AUPHONIC_IN\",
-                  \"input_file\": \"${input_filenames[0]}\",
-                  \"algorithms\": {\"hipfilter\": ${track_1_parameters[0]}, \"backforeground\": ${track_1_parameters[1]}, \"denoise\": ${track_1_parameters[2]}, \"denoiseamount\": ${track_1_parameters[3]}}"
-        for (( i=1; i < ${TRACKS}; i++ )); do
-          AUPHONIC_TRACK_ADD+="           
-                  },
-                  {
-                  \"type\": \"multitrack\", \"id\": ${track_2_parameters[4]%\"*} $(($i+1))\",
-                  \"service\": \"$AUPHONIC_IN\",
-                  \"input_file\": \"${input_filenames[$i]}\",
-                  \"algorithms\": {\"hipfilter\": ${track_2_parameters[0]}, \"backforeground\": ${track_2_parameters[1]}, \"denoise\": ${track_2_parameters[2]}, \"denoiseamount\": ${track_2_parameters[3]}}"
-        done
-        AUPHONIC_TRACK_ADD+="           
-                  }"
-        AUPHONIC_TRACK_ADD=$(sed 's#\: "  *#\: "#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#  *",#",#g')
-
+        
+        auphonic_add_tracks
+        printf "%s" "$AUPHONIC_TRACKS"
+        
         JSON=$(curl -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -452,31 +456,15 @@ if $AUPHONIC ; then
                 "metadata": { "title": "'"$BASENAME"'" },
                 "output_basename": "'"$BASENAME"'-'"$LANGUAGE"'",
                 "multi_input_files": [
-                  '"$AUPHONIC_TRACK_ADD"'
+                  '"$AUPHONIC_TRACKS"'
                 ]
              }')     
       fi  # <-- tracks =2 / >2
     else
       # no multi preset       
-      AUPHONIC_TRACK_ADD="           
-                {
-                \"type\": \"multitrack\", \"id\": \"Local\",
-                \"service\": \"$AUPHONIC_IN\",
-                \"input_file\": \"${input_filenames[0]}\",
-                \"algorithms\": {\"hipfilter\": false, \"denoise\": false}"
-      for (( i=1; i < ${TRACKS}; i++ )); do
-        AUPHONIC_TRACK_ADD+="           
-                },
-                {
-                \"type\": \"multitrack\", \"id\": \"Remote $i\",
-                \"service\": \"$AUPHONIC_IN\",
-                \"input_file\": \"${input_filenames[$i]}\",
-                \"algorithms\": {\"hipfilter\": false, \"denoise\": false}"
-      done
-      AUPHONIC_TRACK_ADD+="           
-                }"
-      AUPHONIC_TRACK_ADD=$( sed 's#\: "  *#\: "#g' <<< "$AUPHONIC_TRACK_ADD" | sed 's#  *",#",#g' )
-      printf "%s" "$AUPHONIC_TRACK_ADD"
+      auphonic_add_tracks
+      printf "%s" "$AUPHONIC_TRACKS"
+      
       JSON=$(curl -X POST -H "Content-Type: application/json" \
        https://auphonic.com/api/productions.json \
        -u $AUPHONIC_USER:$AUPHONIC_PASS \
@@ -485,7 +473,7 @@ if $AUPHONIC ; then
               "output_basename": "'"$BASENAME"'-'"$LANGUAGE"'",
               "output_files": [{"format": "wav", "filename": "'"$BASENAME"'-mix_filtered.wav"}],
               "multi_input_files": [
-                '"$AUPHONIC_TRACK_ADD"'
+                '"$AUPHONIC_TRACKS"'
               ],
               "speech_recognition": {
                 "uuid": "'"$AUPHONIC_STT"'",
@@ -552,17 +540,16 @@ if $AUPHONIC ; then
 
   # download the results from Auphonic
   if [ -n "$DOWNLOAD_FLAG" ] || [[ "$DESTINATION" == /** ]] ; then
-    URLS=$(grep 'download_url' <<< "$JSON" | sed 's#^.*"download_url": "##g' | sed 's#",*##g' )
+    urls=$( grep 'download_url' <<< "$JSON" | sed 's#^.*"download_url": "##g' | sed 's#",*##g' )
     # turn this into proper array:
-    IFS=$'\n' URLS=(${URLS})
+    IFS=$'\n' urls=(${urls})
     # download and move
-    for url in "${URLS[@]}" ; do    
+    for url in "${urls[@]}" ; do    
       # trim leading and trailing spaces, just to be sure
       url="${url#"${url%%[![:blank:]]*}"}"
       url="${url%"${url##*[![:blank:]]}"}"
-      DOWNLOADITEM="${url##*/}"
-#      cd "$OUTPUT_DIR" && { curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" ; cd - >/dev/null; } 
-( cd "$OUTPUT_DIR" ; curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$DOWNLOADITEM" )
+      url_filename="${url##*/}"
+      ( cd "$OUTPUT_DIR" ; curl -O "$url" -u $AUPHONIC_USER:$AUPHONIC_PASS ; output move "$OUTPUT_DIR/$url_filename" )
     done
   fi
   
