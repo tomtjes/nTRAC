@@ -226,11 +226,12 @@ if $google ; then
 
   samplerate=$(soxi -r "$mix_nchannel")
 
+  printf "Google upload in progress.\n"
   test -r "$mix_nchannel" && rclone --config="$rcloneconfig" move "$mix_nchannel" "$google_rclone"
 
   google_bucket="${google_rclone#*:}"
 
-  json=$(curl -X POST \
+  json=$(curl -s -X POST \
      -H "Content-Type: application/json; charset=utf-8" \
      --data "{
   'config': {
@@ -251,7 +252,7 @@ if $google ; then
   if [[ $json == *"error"* ]] ; then
     printf "%s" "$json" > "$transcript"
     output move "$transcript"
-    printf 'Google transcription produced an error\n\n'
+    printf 'Google transcription produced an error.\n\n'
     help_and_exit 1
   else
     google_operation=$( grep name -m 1 <<< "$json" | sed 's#^.*"name": "##g' | sed 's#"$##g')
@@ -261,16 +262,18 @@ if $google ; then
   timer=$(($timeout * 2))
     until [[ $json == *"\"done\": true"* ]] ; do
     if [ $timer -gt 0 ]; then
+      printf 'Google transcription in progress. Will check again in 30 seconds.\n'
       sleep 30
-      json=$(curl -H "Content-Type: application/json; charset=utf-8" "https://speech.googleapis.com/v1/operations/$google_operation?key=$google_key")
+      json=$(curl -s -H "Content-Type: application/json; charset=utf-8" "https://speech.googleapis.com/v1/operations/$google_operation?key=$google_key")
       let "timer-=1"
     else
-      printf 'Google transcription timed out\n\n'
+      printf 'Google transcription timed out.\n\n'
       cleanup google
       help_and_exit 1
       break
     fi
   done
+  printf 'Google transcription done.\n'
 
   # extract transcript from json
   # 1. swap transcript and channelTag sections
@@ -301,10 +304,10 @@ if $google ; then
 
     # 3. replace channelTags with names
     for (( i=2; i <= $tracks; i++ )) ; do
-      json=$( echo "$json" | sed "s# *.channelTag.: $i.#remote $((i - 1)):#g" )
+      json=$( echo "$json" | sed "s# *.channelTag.: $i.#REMOTE $((i - 1)):#g" )
     done
   fi
-  json=$( echo "$json" | sed -e 's/  *.channelTag.: 1,/local:/g' -e 's/  *.transcript.: . */\
+  json=$( echo "$json" | sed -e 's/  *.channelTag.: 1,/LOCAL:/g' -e 's/  *.transcript.: . */\
 /g' -e 's/\",//g' )
 
   echo "$json" > "$transcript"
@@ -351,17 +354,18 @@ if $auphonic ; then
   }
 
   for inputfile in "${input_files[@]}" ; do
+    printf "Auphonic upload in progress: %s\n" "$inputfile"
     rclone --config="$rcloneconfig" copy "$inputfile" "$auphonic_rclone"
   done
 
   if [ "$tracks" -eq 1 ] ; then
     if [ -n "$auphonic_preset_single" ] ; then
       # query Auphonic for preset details
-      json=$(curl https://auphonic.com/api/preset/$auphonic_preset_single.json -u $auphonic_user:$auphonic_pass)
+      json=$(curl -s https://auphonic.com/api/preset/$auphonic_preset_single.json -u $auphonic_user:$auphonic_pass)
       # check if outgoing services are defined or if results should be downloaded later
       download_flag="$(grep 'outgoing_services' <<< "$json" | grep '\]')"
       #create production using preset
-      json=$(curl -X POST -H "Content-Type: application/json" \
+      json=$(curl -s -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $auphonic_user:$auphonic_pass \
          -d '{
@@ -372,7 +376,7 @@ if $auphonic ; then
              }')
     else
       #create production without preset
-      json=$(curl -X POST -H "Content-Type: application/json" \
+      json=$(curl -s -X POST -H "Content-Type: application/json" \
         https://auphonic.com/api/productions.json \
         -u $auphonic_user:$auphonic_pass \
         -d '{
@@ -400,7 +404,7 @@ if $auphonic ; then
 
     if [ -n "$auphonic_preset_multi" ] ; then
       # query Auphonic for preset details
-      json=$(curl https://auphonic.com/api/preset/$auphonic_preset_multi.json -u $auphonic_user:$auphonic_pass)
+      json=$(curl -s https://auphonic.com/api/preset/$auphonic_preset_multi.json -u $auphonic_user:$auphonic_pass)
       # check if outgoing services are defined or if results should be downloaded later
       download_flag="$( grep 'outgoing_services' <<< "$json" | grep '\]')"
 
@@ -409,7 +413,7 @@ if $auphonic ; then
         track_1_parameters[4]=`cat $json | grep '"id":' -m 1 | sed 's#^.*"id": "##g' | sed 's#", $##g'`
         track_2_parameters[4]=`cat $json | grep '"id":' -m 2 | tail -n1 | sed 's#^.*"id": "##g' | sed 's#", $##g'`
 
-        json=$(curl -X POST -H "Content-Type: application/json" \
+        json=$(curl -s -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $auphonic_user:$auphonic_pass \
          -d '{
@@ -464,7 +468,7 @@ if $auphonic ; then
 
         auphonic_add_tracks
 
-        json=$(curl -X POST -H "Content-Type: application/json" \
+        json=$(curl -s -X POST -H "Content-Type: application/json" \
          https://auphonic.com/api/productions.json \
          -u $auphonic_user:$auphonic_pass \
          -d '{
@@ -479,7 +483,7 @@ if $auphonic ; then
     else # no multi preset
       auphonic_add_tracks
       # create production using standard parameters
-      json=$(curl -X POST -H "Content-Type: application/json" \
+      json=$(curl -s -X POST -H "Content-Type: application/json" \
        https://auphonic.com/api/productions.json \
        -u $auphonic_user:$auphonic_pass \
        -d '{
@@ -535,14 +539,15 @@ if $auphonic ; then
   fi
 
   # start production
-  json=$(curl -X POST https://auphonic.com/api/production/$uuid/start.json -u $auphonic_user:$auphonic_pass)
+  json=$(curl -s -X POST https://auphonic.com/api/production/$uuid/start.json -u $auphonic_user:$auphonic_pass)
   auphonic_error_check
 
   # check once every 30 seconds, if production is done. Abort after checking set number of times
   timer=$(($timeout * 2))
   while [[ $json != *"\"status_string\": \"Done\""* ]] ; do
+    printf 'Auphonic transcription in progress. Will check again in 30 seconds.\n'
     sleep 30
-    json=$(curl https://auphonic.com/api/production/$uuid.json -u $auphonic_user:$auphonic_pass)
+    json=$(curl -s https://auphonic.com/api/production/$uuid.json -u $auphonic_user:$auphonic_pass)
     auphonic_error_check
     if [ $timer -eq 0 ] ; then
       printf 'Auphonic transcription timed out\n\n'
@@ -551,6 +556,7 @@ if $auphonic ; then
     fi
     let "timer-=1"
   done
+  printf 'Auphonic transcription done.\n'
 
   # download the results from Auphonic
   if [ -n "$download_flag" ] || [[ "$destination" == /** ]] ; then
@@ -563,7 +569,8 @@ if $auphonic ; then
       url="${url#"${url%%[![:blank:]]*}"}"
       url="${url%"${url##*[![:blank:]]}"}"
       url_filename="${url##*/}"
-      ( cd "$output_dir" ; curl -O "$url" -u $auphonic_user:$auphonic_pass ; output move "$output_dir/$url_filename" )
+      printf "Auphonic download in progress: %s\n" "$url_filename"
+      ( cd "$output_dir" ; curl -s -O "$url" -u $auphonic_user:$auphonic_pass ; output move "$output_dir/$url_filename" )
     done
   fi
 
