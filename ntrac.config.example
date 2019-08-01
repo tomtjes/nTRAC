@@ -5,6 +5,7 @@ google_rclone="Google:mybucket"                       # rclone remote for Google
 google_key="AIzaSyDr7fEyGyA19CroJptSukVg2vU08F8lEbU"  # API key for your project
 language_alt="'fr-FR', 'de-DE'"                       # Google can auto-detect the language. Provide alternatives to default language here.
                                                       #   (Using this, you can have multiple languages in one recording as well)
+                                                      # see https://cloud.google.com/speech-to-text/docs/languages for available languages
 # Auphonic
 auphonic_user="myusername"
 auphonic_pass="myPassw0rd"

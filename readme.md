@@ -89,7 +89,7 @@ Edit `ntrac.sh` to change the default settings. You can always override default 
 
 ## Usage
 
-`ntrac.sh [ -a | --auphonic ] [ -g | --google ] [ <-l | --language> <en-EN | en-UK | de-DE |...> | --en-EN | --en-UK | --de-DE... ] [ delete=<true | false> ] [ dest=</path/to/folder | RcloneRemote1:folder | dir> ] /path/to/channel_1.wav /path/to/channel_2.wav /path/to/channel_n.wav /path/to/output.wav`
+`ntrac.sh [ -a | --auphonic ] [ -g | --google ] [ <-l | --language> <en-US | en-GB | de-DE |...> | --en-US | --en-GB | --de-DE... ] [ delete=<true | false> ] [ dest=</path/to/folder | RcloneRemote1:folder | dir> ] /path/to/channel_1.wav /path/to/channel_2.wav /path/to/channel_n.wav /path/to/output.wav`
 
 ### Parameters
 
@@ -99,8 +99,8 @@ If no parameters are given, only a mono-mix file is generated.
 - `-g`, `--google`                       
    use Google for transcription
 - `-l`, `--language`                     
-   define transcription language. Must be followed by language code, e.g.`en-EN`, `en-UK`, `de-DE`. For available languages at Google see [here](https://cloud.google.com/speech-to-text/docs/languages).
-- `--en-EN`, `--en-UK`, `--de-DE`...   
+   define transcription language. Must be followed by language code, e.g.`en-US`, `en-GB`, `de-DE`. For available languages at Google see [here](https://cloud.google.com/speech-to-text/docs/languages).
+- `--en-US`, `--en-GB`, `--de-DE`...   
    alternative definition of transcription language
 - `delete=true`  
    Input files will be deleted from source directory. They will be copied to the output directory, though.

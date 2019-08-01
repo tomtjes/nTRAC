@@ -46,7 +46,7 @@ fi
 help_and_exit() {
   local retval=${1:-1}
   cat <<EOF
-${0##*/} [ -a | --auphonic ] [ -g | --google ] [ -l < en-EN | en-UK | de-DE | ...> | --language < en-EN | en-UK | de-DE |...> | --en-EN | --en-UK | --de-DE... ] [ delete=< true | false > ] [ dest=< /path/to/dir | RcloneRemote1:path/to/dir | dir > ] /path/to/outgoing.wav /path/to/incoming.wav /path/to/output.wav
+${0##*/} [ -a | --auphonic ] [ -g | --google ] [ -l < en-US | en-GB | de-DE | ...> | --language < en-US | en-GB | de-DE |...> | --en-US | --en-GB | --de-DE... ] [ delete=< true | false > ] [ dest=< /path/to/dir | RcloneRemote1:path/to/dir | dir > ] /path/to/outgoing.wav /path/to/incoming.wav /path/to/output.wav
 
 If no parameters are given, only a mono-mix file is generated.
 EOF
