@@ -102,6 +102,7 @@ while (( $# )); do
     -g|--google) google=true ;;
     -l|--language) language=$2; shift ;;
     --[abcdefghijklmnopqstuvwxyz][abcdefghijklmnopqstuvwxyz]-[ABCDEFGHIJKLMNOPQRSTUVWXYZ][ABCDEFGHIJKLMNOPQRSTUVWXYZ]) language=${1:2} ;;
+    --yue-Hant-HK) language="yue-Hant-HK"
     delete=true) delete_input_files=true ;;
     delete=false) delete_input_files=false ;;
     dest=/**) destination="${1#*=}" ;;
