@@ -167,6 +167,12 @@ if [[ $output_dir != /** ]] ; then
   fi
 fi
 
+if [[ -z $destination && -n $auphonic && -n $auphonic_out ]] ; then
+  auphonic_out_use="true"
+else
+  auphonic_out_use=""
+fi
+
 if [[ $destination == dir || $destination == "" ]] ; then
   destination="$output_dir"
 else
@@ -324,10 +330,9 @@ fi
 if $auphonic ; then
   auphonic_error_check() {
     if [[ $json == *"\"status_string\": \"Error\""* || $json == *"doctype html"* ]] ; then
-      errormsg="$output_dir/$basename-error.txt"
-      echo "$json" > "$errormsg"
-      output move "$errormsg"
-      printf 'Auphonic transcription produced an error\n\n'
+      echo "$json" > "$output_dir/$basename-error.txt"
+      output move "$output_dir/$basename-error.txt"
+      printf "Auphonic transcription produced an error\nSee %s-error.txt for details.\n\n" "$basename"
       cleanup auphonic
       help_and_exit 1
     else
@@ -337,103 +342,166 @@ if $auphonic ; then
 
   auphonic_add_tracks() {
     auphonic_tracks="            {
-            \"type\": \"multitrack\", \"id\": ${track_1_parameters[4]},
+            \"type\": \"multitrack\", \"id\": \"${track_1_parameters[4]}\",
+            \"algorithms\": {\"hipfilter\": ${track_1_parameters[0]}, \"backforeground\": \"${track_1_parameters[1]}\", \"denoise\": ${track_1_parameters[2]}, \"denoiseamount\": ${track_1_parameters[3]}}"
+    if [ -n "$auphonic_in" ] ; then # add incoming file service if configured
+      auphonic_tracks+=",
             \"service\": \"$auphonic_in\",
-            \"input_file\": \"${input_filenames[0]}\",
-            \"algorithms\": {\"hipfilter\": ${track_1_parameters[0]}, \"backforeground\": ${track_1_parameters[1]}, \"denoise\": ${track_1_parameters[2]}, \"denoiseamount\": ${track_1_parameters[3]}}"
+            \"input_file\": \"${input_filenames[0]}\""
+    fi
     for (( i=1; i < ${tracks}; i++ )); do
+      if [ $tracks -eq 2 ]; then
+        auphonic_tracks+="
+              },
+              {
+              \"type\": \"multitrack\", \"id\": \"${track_2_parameters[4]}\","
+      else
+        auphonic_tracks+="
+              },
+              {
+              \"type\": \"multitrack\", \"id\": \"${track_2_parameters[4]} $i\","
+      fi
       auphonic_tracks+="
-            },
-            {
-            \"type\": \"multitrack\", \"id\": ${track_2_parameters[4]%\"*} $i\",
+            \"algorithms\": {\"hipfilter\": ${track_2_parameters[0]}, \"backforeground\": \"${track_2_parameters[1]}\", \"denoise\": ${track_2_parameters[2]}, \"denoiseamount\": ${track_2_parameters[3]}}"
+      if [ -n "$auphonic_in" ] ; then # add incoming file service if configured
+      auphonic_tracks+=",
             \"service\": \"$auphonic_in\",
-            \"input_file\": \"${input_filenames[$i]}\",
-            \"algorithms\": {\"hipfilter\": ${track_2_parameters[0]}, \"backforeground\": ${track_2_parameters[1]}, \"denoise\": ${track_2_parameters[2]}, \"denoiseamount\": ${track_2_parameters[3]}}"
+            \"input_file\": \"${input_filenames[$i]}\""
+      fi
     done
     auphonic_tracks+="
             }"
     auphonic_tracks=$( sed 's#\: "  *#\: "#g' <<< "$auphonic_tracks" | sed 's#  *",#",#g' )
   }
 
-  for inputfile in "${input_files[@]}" ; do
-    printf "Auphonic upload in progress: %s\n" "$inputfile"
-    rclone --config="$rcloneconfig" copy "$inputfile" "$auphonic_rclone"
-  done
+  auphonic_upload() {
+    printf "Auphonic upload in progress: %s\n" "$2"
+    json=$(curl -s -X POST https://auphonic.com/api/production/$uuid/upload.json \
+    -u $auphonic_user:"$auphonic_pass" \
+    -F ''"$1"'=@"'"$2"'"')
+    auphonic_error_check
+  }
+
+  json=""
+  basename_auphonic="$basename-$language"
 
   if [ "$tracks" -eq 1 ] ; then
     if [ -n "$auphonic_preset_single" ] ; then
       # query Auphonic for preset details
       json=$(curl -s https://auphonic.com/api/preset/$auphonic_preset_single.json -u $auphonic_user:$auphonic_pass)
       # check if outgoing services are defined or if results should be downloaded later
-      download_flag="$(grep 'outgoing_services' <<< "$json" | grep '\]')"
-      #create production using preset
-      json=$(curl -s -X POST -H "Content-Type: application/json" \
-         https://auphonic.com/api/productions.json \
-         -u $auphonic_user:$auphonic_pass \
-         -d '{
-                "preset": "'"$auphonic_preset_single"'",
-                "metadata": { "title": "'"$basename"'" },
-                "input_file": "'"${input_filenames[0]}"'",
-                "service": "'"$auphonic_in"'"
-             }')
-    else
-      #create production without preset
+      download_flag="$(grep 'outgoing_services' <<< "$json" | grep '\]')" # if closing bracket ] is on the same line, no service is configured
+      # check if basename is set
+      basename_preset="$(grep 'output_basename' <<< "$json" | sed 's#^.*"output_basename": "##g' | sed 's#",* *$##g')"
+      if [ -n "$basename_preset" ] ; then
+        basename_auphonic="$basename_preset"
+      fi
+      # create production using preset
+      if [ -n "$auphonic_in" ] ; then # incoming file service configured
+        json=$(curl -s -X POST -H "Content-Type: application/json" \
+           https://auphonic.com/api/productions.json \
+           -u $auphonic_user:$auphonic_pass \
+           -d '{
+                  "preset": "'"$auphonic_preset_single"'",
+                  "metadata": { "title": "'"$basename"'" },
+                  "input_file": "'"${input_filenames[0]}"'",
+                  "service": "'"$auphonic_in"'",
+                  "output_basename": "'"$basename_auphonic"'"
+               }')
+      else # no incoming file service
+        json=$(curl -s -X POST -H "Content-Type: application/json" \
+           https://auphonic.com/api/productions.json \
+           -u $auphonic_user:$auphonic_pass \
+           -d '{
+                  "preset": "'"$auphonic_preset_single"'",
+                  "metadata": { "title": "'"$basename"'" },
+                  "output_basename": "'"$basename_auphonic"'"
+               }')
+      fi
+    elif [ -n "$auphonic_in" ] ; then # no preset, but incoming file service configured
+      basename_auphonic="$basename"
       json=$(curl -s -X POST -H "Content-Type: application/json" \
         https://auphonic.com/api/productions.json \
         -u $auphonic_user:$auphonic_pass \
         -d '{
             "metadata": { "title": "'"$basename"'"},
-            "output_basename": "'"$basename"'-'"$language"'",
+            "output_basename": "'"$basename_auphonic"'",
             "input_file": "'"${input_filenames[0]}"'",
             "service": "'"$auphonic_in"'",
-            "output_files": [{"format": "wav", "filename": "'"$basename"'-mix_filtered.wav"}],
             "algorithms": {
               "hipfilter": false, "leveler": false,
               "normloudness": false, "denoise": false
-            },
-            "speech_recognition": {
-              "uuid": "'"$auphonic_stt"'",
-              "language": "'"$language"'"
-              }
+            }
+         }')
+    else # no preset, no incoming file service
+      basename_auphonic="$basename"
+      json=$(curl -s -X POST -H "Content-Type: application/json" \
+        https://auphonic.com/api/productions.json \
+        -u $auphonic_user:$auphonic_pass \
+        -d '{
+            "metadata": { "title": "'"$basename"'"},
+            "output_basename": "'"$basename_auphonic"'",
+            "algorithms": {
+              "hipfilter": false, "leveler": false,
+              "normloudness": false, "denoise": false
+            }
          }')
     fi
   else
     # tracks > 1
     # arrays for Auphonic production parameters
-    declare -a track_1_parameters=(false '"auto"' false 0 '"LOCAL"')
-    # array: 0:hipfilter 1:"backforeground" 2:denoise 3:denoiseamount 4:"id"
-    declare -a track_2_parameters=(false '"auto"' false 0 '"REMOTE"')
+    declare -a track_1_parameters=(false auto false 0 LOCAL)
+    # array: 0:hipfilter 1:backforeground 2:denoise 3:denoiseamount 4:id
+    declare -a track_2_parameters=(false auto false 0 REMOTE)
 
     if [ -n "$auphonic_preset_multi" ] ; then
       # query Auphonic for preset details
       json=$(curl -s https://auphonic.com/api/preset/$auphonic_preset_multi.json -u $auphonic_user:$auphonic_pass)
       # check if outgoing services are defined or if results should be downloaded later
-      download_flag="$( grep 'outgoing_services' <<< "$json" | grep '\]')"
-
+      download_flag="$(grep 'outgoing_services' <<< "$json" | grep '\]')"
+      # check if basename is set
+      basename_preset="$(grep 'output_basename' <<< "$json" | sed 's#^.*"output_basename": "##g' | sed 's#",* *$##g')"
+      if [ -n "$basename_preset" ] ; then
+        basename_auphonic="$basename_preset"
+      fi
       if [ "$tracks" -eq 2 ] ; then
         # extract track IDs (names) from preset
-        track_1_parameters[4]=`cat $json | grep '"id":' -m 1 | sed 's#^.*"id": "##g' | sed 's#", $##g'`
-        track_2_parameters[4]=`cat $json | grep '"id":' -m 2 | tail -n1 | sed 's#^.*"id": "##g' | sed 's#", $##g'`
+        track_1_parameters[4]="$(grep '"id":' -m 1 <<< "$json" | sed 's#^.*"id": "##g' | sed 's#",* *$##g')"
+        track_2_parameters[4]="$(grep '"id":' -m 2 <<< "$json" | tail -n1 | sed 's#^.*"id": "##g' | sed 's#",* *$##g')"
 
-        json=$(curl -s -X POST -H "Content-Type: application/json" \
-         https://auphonic.com/api/productions.json \
-         -u $auphonic_user:$auphonic_pass \
-         -d '{
-                "preset": "'"$auphonic_preset_multi"'",
-                "metadata": { "title": "'"$basename"'" },
-                "multi_input_files": [
-                  {
-                  "type": "multitrack", "id": "'"${track_1_parameters[4]}"'",
-                  "service": "'"$auphonic_in"'",
-                  "input_file": "'"${input_filenames[0]}"'"
-                  },
-                  {
-                  "type": "multitrack", "id": "'"${track_2_parameters[4]}"'",
-                  "service": "'"$auphonic_in"'",
-                  "input_file": "'"${input_filenames[1]}"'"
-                  }
-                ]
-             }')
+        if [ -n "$auphonic_in" ] ; then # incoming file service configured
+          json=$(curl -s -X POST -H "Content-Type: application/json" \
+           https://auphonic.com/api/productions.json \
+           -u $auphonic_user:$auphonic_pass \
+           -d '{
+                  "preset": "'"$auphonic_preset_multi"'",
+                  "metadata": { "title": "'"$basename"'" },
+                  "output_basename": "'"$basename_auphonic"'",
+                  "multi_input_files": [
+                    {
+                    "type": "multitrack", "id": "'"${track_1_parameters[4]}"'",
+                    "service": "'"$auphonic_in"'",
+                    "input_file": "'"${input_filenames[0]}"'"
+                    },
+                    {
+                    "type": "multitrack", "id": "'"${track_2_parameters[4]}"'",
+                    "service": "'"$auphonic_in"'",
+                    "input_file": "'"${input_filenames[1]}"'"
+                    }
+                  ]
+               }')
+        else # no incoming file service
+          json=$(curl -s -X POST -H "Content-Type: application/json" \
+           https://auphonic.com/api/productions.json \
+           -u $auphonic_user:$auphonic_pass \
+           -d '{
+                  "preset": "'"$auphonic_preset_multi"'",
+                  "metadata": { "title": "'"$basename"'" },
+                  "output_basename": "'"$basename_auphonic"'",
+                  "is_multitrack": true
+               }')
+        fi
+
       else
         # tracks > 2
         # build a template for tracks from preset
@@ -463,9 +531,9 @@ if $auphonic ; then
   	    j=0
         for parameter in "hipfilter" "backforeground" "denoise" "denoiseamount" "id" ; do
         # getting the actual parameters for track 1 and 2
-            track_1_parameters[$j]=$(grep -m 1 $parameter <<< "${track_template[1]}" | sed 's#.*"'"$parameter"'": ##g' | sed 's#",#"#g' | sed 's#, $##g' )
-            track_2_parameters[$j]=$(grep -m 1 $parameter <<< "${track_template[2]}" | sed 's#.*"'"$parameter"'": ##g' | sed 's#",#"#g' | sed 's#, $##g' )
-            let "j+=1"
+          track_1_parameters[$j]=$(grep -m 1 $parameter <<< "${track_template[1]}" | sed 's#.*"'"$parameter"'": "*##g' | sed 's#"*,* *$##g' )
+          track_2_parameters[$j]=$(grep -m 1 $parameter <<< "${track_template[2]}" | sed 's#.*"'"$parameter"'": "*##g' | sed 's#"*,* *$##g' )
+          let "j+=1"
         done
 
         auphonic_add_tracks
@@ -476,7 +544,7 @@ if $auphonic ; then
          -d '{
                 "preset": "'"$auphonic_preset_multi"'",
                 "metadata": { "title": "'"$basename"'" },
-                "output_basename": "'"$basename"'-'"$language"'",
+                "output_basename": "'"$basename_auphonic"'",
                 "multi_input_files": [
                   '"$auphonic_tracks"'
                 ]
@@ -485,20 +553,16 @@ if $auphonic ; then
     else # no multi preset
       auphonic_add_tracks
       # create production using standard parameters
+      basename_auphonic="$basename"
       json=$(curl -s -X POST -H "Content-Type: application/json" \
        https://auphonic.com/api/productions.json \
        -u $auphonic_user:$auphonic_pass \
        -d '{
               "metadata": { "title": "'"$basename"'" },
-              "output_basename": "'"$basename"'-'"$language"'",
-              "output_files": [{"format": "wav", "filename": "'"$basename"'-mix_filtered.wav"}],
+              "output_basename": "'"$basename_auphonic"'",
               "multi_input_files": [
                 '"$auphonic_tracks"'
               ],
-              "speech_recognition": {
-                "uuid": "'"$auphonic_stt"'",
-                "language": "'"$language"'"
-                },
               "algorithms": {
                 "leveler": false,
                 "crossgate": true,
@@ -513,26 +577,61 @@ if $auphonic ; then
   # extract production ID from response
   uuid=$(grep uuid -m 1 <<< "$json" | sed 's#^.*"uuid": "##g' | sed 's#", $##g')
 
-  # manage file output for no-preset productions
+  # upload files
+  if [ -n "$auphonic_in" ] ; then # incoming file service is configured
+    for inputfile in "${input_files[@]}" ; do
+      printf "Auphonic upload in progress (via Rclone %s): %s\n" "$auphonic_rclone" "$inputfile"
+      rclone --config="$rcloneconfig" copy "$inputfile" "$auphonic_rclone"
+    done
+  elif [ "$tracks" -eq 1 ] ; then # no incoming file service -> direct upload to Auphonic
+    auphonic_upload "input_file" "${input_files[0]}"
+  else
+    auphonic_upload "${track_1_parameters[4]}" "${input_files[0]}"
+    if [ "$tracks" -eq 2 ] ; then
+      auphonic_upload "${track_2_parameters[4]}" "${input_files[1]}"
+    else
+      for (( i=1; i < ${tracks}; i++ )); do
+        auphonic_upload "${track_2_parameters[4]} $i" "${input_files[$i]}" # added counter for track id
+      done
+    fi
+  fi
+
+  # manage speech recognition and file output for no-preset productions
   if [[ "$tracks" -eq 1 && -z "$auphonic_preset_single" ]] || [[ "$tracks" -gt 1 && -z "$auphonic_preset_multi" ]] ; then
-    if [ -n "$auphonic_out" ] ; then
+    # add speech recognition
+    curl -X POST -H "Content-Type: application/json" \
+     https://auphonic.com/api/production/$uuid/speech_recognition.json \
+     -u $auphonic_user:$auphonic_pass \
+     -d '{"uuid": "'"$auphonic_stt"'", "language":"'"$language"'"}' > /dev/null 2>&1
+    # add output files
+    curl -s -H "Content-Type: application/json" -X POST \
+     https://auphonic.com/api/production/$uuid/output_files.json \
+     -u $auphonic_user:$auphonic_pass \
+     -d '[
+     {"format":"wav", "suffix":"-auphonic"},
+     {"format":"transcript", "ending":"html", "suffix":"'"-$language"'"},
+     {"format":"speech", "ending":"json", "suffix":"'"-$language"'"},
+     {"format":"subtitle", "ending":"vtt", "suffix":"'"-$language"'"}
+     ]' > /dev/null 2>&1
+    if [ -n "$auphonic_out_use" ] ; then
       # if set, tell Auphonic to move output files to destination
-      curl -H "Content-Type: application/json" -X POST \
+      curl -s -H "Content-Type: application/json" -X POST \
        https://auphonic.com/api/production/$uuid/outgoing_services.json \
        -u $auphonic_user:$auphonic_pass \
-       -d '[{"uuid": "'"$auphonic_out"'"}]'
+       -d '[{"uuid": "'"$auphonic_out"'"}]' > /dev/null 2>&1
+      download_flag=""
       if [ "$auphonic_in" != "$auphonic_out" ] ; then
         # if different from input destination, tell Auphonic to copy input files to output
         if [ "$tracks" -gt 1 ] ; then
-          curl -H "Content-Type: application/json" -X POST \
+          curl -s -H "Content-Type: application/json" -X POST \
            https://auphonic.com/api/production/$uuid/output_files.json \
            -u $auphonic_user:$auphonic_pass \
-           -d '[{"format":"tracks"}]'
+           -d '[{"format":"tracks","ending":"wav.zip","suffix":".unprocessed"}]' > /dev/null 2>&1
         else
-          curl -H "Content-Type: application/json" -X POST \
+          curl -s -H "Content-Type: application/json" -X POST \
            https://auphonic.com/api/production/$uuid/output_files.json \
            -u $auphonic_user:$auphonic_pass \
-           -d '[{"format":"input"}]'
+           -d '[{"format":"input"}]' > /dev/null 2>&1
         fi
       fi
     else
@@ -541,7 +640,7 @@ if $auphonic ; then
   fi
 
   # start production
-  json=$(curl -s -X POST https://auphonic.com/api/production/$uuid/start.json -u $auphonic_user:$auphonic_pass)
+#  json=$(curl -s -X POST https://auphonic.com/api/production/$uuid/start.json -u $auphonic_user:$auphonic_pass)
   auphonic_error_check
 
   # check once every 30 seconds, if production is done. Abort after checking set number of times
@@ -561,7 +660,7 @@ if $auphonic ; then
   printf 'Auphonic transcription done.\n'
 
   # download the results from Auphonic
-  if [ -n "$download_flag" ] || [[ "$destination" == /** ]] ; then
+  if [ -n "$download_flag" ] || [[ -z $auphonic_out_use && "$destination" == /** ]] ; then
     urls=$( grep 'download_url' <<< "$json" | sed 's#^.*"download_url": "##g' | sed 's#",*##g' )
     # turn this into proper array:
     IFS=$'\n' urls=(${urls})
@@ -574,11 +673,13 @@ if $auphonic ; then
       printf "Auphonic download in progress: %s\n" "$url_filename"
       ( cd "$output_dir" ; curl -s -O "$url" -u $auphonic_user:$auphonic_pass ; output move "$output_dir/$url_filename" )
     done
+  else
+    printf "Auphonic has copied the transcript to the remote output destination.\n"
   fi
 
   cleanup auphonic
 fi
-#done Auphonic transcription
+# done Auphonic transcription
 
 cleanup all
 

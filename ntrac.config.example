@@ -1,36 +1,36 @@
 # TRANSCRIPTION SERVICES
 
 # Google
-google_rclone="Google:mybucket"                       # rclone remote for Google Cloud Storage, must include bucket name
+google_rclone="Google:mybucket"                       # Rclone remote for Google Cloud Storage, must include bucket name
 google_key="AIzaSyDr7fEyGyA19CroJptSukVg2vU08F8lEbU"  # API key for your project
 language_alt="'fr-FR', 'de-DE'"                       # Google can auto-detect the language. Provide alternatives to default language here.
                                                       #   (Using this, you can have multiple languages in one recording as well)
-                                                      # see https://cloud.google.com/speech-to-text/docs/languages for available languages
+                                                      #   See https://cloud.google.com/speech-to-text/docs/languages for available languages
 # Auphonic
 auphonic_user="myusername"
 auphonic_pass="myPassw0rd"
-auphonic_rclone="Auphonic:"                           # Rclone remote for file exchange with Auphonic, can be same as DESTINATION or google_rclone
-auphonic_in="FWT6OWLDU82r3EPqSsHgce"                  # UUID of service for incoming file transfers, must point to same location as auphonic_rclone
-auphonic_preset_multi="L52aswOLCUJYAhPcHeNVeE"        # UUID of an Auphonic multitrack preset. Optional, BUT if you don't provide one, AUPHONIC_STT mandatory
-auphonic_preset_single=""                             # UUID of an Auphonic preset, in case you have single-file-recordings. Optional, BUT if you don't provide a UUID here, auphonic_stt mandatory
+auphonic_preset_multi="L52aswOLCUJYAhPcHeNVeE"        # UUID of an Auphonic multitrack preset. Optional, BUT if you don't provide one, *auphonic_stt* mandatory
+auphonic_preset_single=""                             # UUID of an Auphonic preset, in case you have single-file-recordings. Optional, BUT if you don't provide a UUID here, *auphonic_stt* mandatory
 auphonic_stt="Qw5wpWCyidowl98Edj8b49"                 # UUID of automatic speech recognition service, configured on auphonic.com
-auphonic_out=""                                       # optional: UUID of service for outgoing file transfers,
-                                                      #   auphonic_in and auphonic_out can be identical
+auphonic_rclone="Auphonic:"                           # optional: Rclone remote for file exchange with Auphonic, can be same as *destination* or *google_rclone*
+auphonic_in="FWT6OWLDU82r3EPqSsHgce"                  # optional: UUID of service for incoming file transfers, must point to same location as *auphonic_rclone*
+auphonic_out=""                                       # optional: UUID of service for outgoing file transfers, will be used if *destination* is not set.
+                                                      #   *auphonic_in* and *auphonic_out* can be identical
 
 # DEFAULT SETTINGS
 # all of these can be overridden when calling the script with corresponding parameters
 
 auphonic=false                      # if true Auphonic transcription is always triggered, must be configured below
-google=false                        # if both are false and no service is called from command line, only mono mix will be created
+google=false                        # if both are false and no service is called from command line, only a mono mix will be created
 language="en-US"                    # default language
-delete_input_files=true             # if true, input files will be deleted from input folder (they will be copied to the output destination, though) - recommended for use with Freepbx
+delete_input_files=true             # if true, input files will be deleted from input folder (they will be copied to the output destination, though) - recommended for use with FreePBX
 destination=""                      # leave empty (or set to "dir") to use directory of output file
-                                    #    or e.g. destination=/path/to/folder to use a writable folder on local system
-                                    #    or e.g. destination=Dropbox:transcripts to use a folder on a Rclone remote called Dropbox
+                                    #    or e.g. *destination="/path/to/folder"* to use a writable folder on local system
+                                    #    or e.g. *destination="Dropbox:transcripts"* to use a folder on a Rclone remote called Dropbox
 
 # MISC SETTINGS
 
-# location of SOX, e.g. ""/usr/bin/sox"
+# location of SOX, e.g. "/usr/bin/sox"
 sox="sox"
 
 # Rclone config file
@@ -39,8 +39,8 @@ rcloneconfig="$HOME/.config/rclone/rclone.conf"
 # number of minutes after which transcription should be considered failed
 timeout=30
 
-# If you use nTRAC with FreePBX, the created mono-mix will additionally be copied to the INPUT directory for use by the PBX (e.g. User Control Panel).
-# Usually you would also set delete_input_files=true above
+# If you use nTRAC with FreePBX, the created mono-mix will additionally be copied to the *input* directory for use by the PBX (e.g. User Control Panel).
+# Usually you would also set *delete_input_files=true* above
 freepbx=true
 
 # Create a log? Where?
