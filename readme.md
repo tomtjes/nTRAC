@@ -85,7 +85,8 @@ Edit `ntrac.config` to change the default settings. You can always override defa
   - leave empty (or set to `dir`) to use directory of output file.
   - set to e.g. `destination="/path/to/folder"` to use a writable folder on local system or
   - set to e.g. `destination="Dropbox:transcripts"` to use a folder on a Rclone remote called Dropbox
-  If set to anything but `""` *destination* overrides *auphonic_out*.
+
+  If set, `destination` overrides `auphonic_out`.
 
 ## Usage
 

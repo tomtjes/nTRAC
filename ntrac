@@ -107,8 +107,8 @@ while (( $# )); do
     delete=true) delete_input_files=true ;;
     delete=false) delete_input_files=false ;;
     dest=/**) destination="${1#*=}" ;;
-    dest=[a-za-z]*:) destination="${1#*=}" ;;
-    dest=[a-za-z]*:[a-za-z]*/**) destination="${1#*=}" ;;
+    dest=[a-zA-Z]*:) destination="${1#*=}" ;;
+    dest=[a-zA-Z]*:[a-zA-Z]*/**) destination="${1#*=}" ;;
     dest=dir) destination="${1#*=}" ;;
     -h|--help) help_and_exit 0 ;;
     -*)        printf 'Unknown option: %q\n\n' "$1"
