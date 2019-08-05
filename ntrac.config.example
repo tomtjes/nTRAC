@@ -33,7 +33,7 @@ destination=""                      # leave empty (or set to "dir") to use direc
 # location of SOX, e.g. "/usr/bin/sox"
 sox="sox"
 
-# Rclone config file
+# Rclone config file, e.g. /home/asterisk/.config/rclone/rclone.conf
 rcloneconfig="$HOME/.config/rclone/rclone.conf"
 
 # number of minutes after which transcription should be considered failed
