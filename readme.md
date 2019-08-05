@@ -123,6 +123,7 @@ If no transcription parameters are given or set in defaults, only a mono-mix fil
 ## Credits
 
 Created by Thomas Reintjes 2019
+
 Based on
 
 - 2wav2mp3 - 2005 05 23 dietmar zlabinger http://www.zlabinger.at/asterisk
