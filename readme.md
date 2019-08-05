@@ -49,10 +49,10 @@ nTRAC uses Google Cloud Platform or Auphonic to generate transcripts. Please fam
 
 1. To use Auphonic for transcription, create an account and go to the [services page](https://auphonic.com/engine/services/). You'll need at least one service for speech recognition. It is recommended to create another service for file transfers.
 2. Create a speech recognition service. You will also have to set up an account with that service. Please refer to the [Auphonic documentation](https://auphonic.com/help/web/services.html#automatic-speech-recognition-services)
-2. Create one or two file transfer services, depending whether you want to upload files via an external file storage or want to store your output files in a different location from your input files. For incoming file transfers you must choose a service that is also [supported by Rclone](https://rclone.org/overview/).
+2. Create one or two file transfer services (optional), depending whether you want to upload files via an external file storage or want to store your output files in a different location from your input files. For incoming file transfers you must choose a service that is also [supported by Rclone](https://rclone.org/overview/).
 3. On your local machine or PBX, configure Rclone for the same file transfer service. The idea is, that your machine uploads recordings using Rclone to a location where Auphonic picks them up. Make sure to do this using the same user that later executes nTRAC - e.g. on FreePBX the Asterisk user: `sudo -u asterisk rclone config`
 4. Navigate to the services page of your Auphonic account again and find the UUIDs of the services you created.
-6. Edit `ntrac` to enter your Auphonic credentials
+6. Edit `ntrac.config` to enter your Auphonic credentials
    - `auphonic_user="myusername"` and `auphonic_pass="myP@ssw0rd"`
    Your Auphonic login credentials  
    - `auphonic_rclone="Auphonic:"`
@@ -72,7 +72,7 @@ Note: If you define a preset that uses an outgoing service, unprocessed input fi
 
 ## Default Settings
 
-Edit `ntrac` to change the default settings. You can always override default settings by passing a parameter to the script, see *Usage* below.
+Edit `ntrac.config` to change the default settings. You can always override default settings by passing a parameter to the script, see *Usage* below.
 - `auphonic=false`
   If `true` Auphonic transcription will always be triggered.
 - `google=false`
